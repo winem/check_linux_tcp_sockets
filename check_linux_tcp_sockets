@@ -1,0 +1,89 @@
+#!/usr/bin/env python3
+import argparse
+import sys
+
+def main(args):
+    chk_msg             = {}
+    chk_msg_prefix      = 'SOCKSTAT TCP'
+    chk_state           = 0
+    chk_state_strings   = [ 'OK', 'WARNING', 'CRITICAL', 'UNKNOWN' ]
+    metrics             = {}
+    sockstat_f_path     = '/proc/net/sockstat'
+
+    try:
+        sockstat_f = open(sockstat_f_path, 'r')
+    except IOError:
+        print('{} UNKNOWN - {} is not readable.'.format(chk_msg_prefix, sockstat_f_path))
+        sys.exit(3)
+    else:
+        with sockstat_f:
+            for ln in sockstat_f:
+                if ln.startswith('TCP'):
+                    m_cnt = 1
+                    metrics_available       = len(ln.split())
+                   
+                    while m_cnt < metrics_available:
+                        metric              = ln.split()[0+m_cnt]
+                        metric_value        = ln.split()[1+m_cnt]
+                        metrics[metric]     = metric_value
+                        m_cnt               += 2
+                        chk_msg[metric]     = '{} is {!s}'.format(metric, metric_value)
+
+    if args.tcp_sockets_warn or args.tcp_sockets_crit:
+        metrics, chk_msg, chk_state = checkMetricsAgainstThresholds(metrics, 'inuse', chk_state, chk_msg, args.tcp_sockets_warn, args.tcp_sockets_crit)
+
+    if args.tcp_mem_warn or args.tcp_mem_crit:
+        metrcis, chk_msg, chk_state = checkMetricsAgainstThresholds(metrics, 'mem', chk_state, chk_msg, args.tcp_mem_warn, args.tcp_mem_crit)
+
+    perf_data       = (' '.join("{!s}={!s}".format(k,v) for (k,v) in metrics.items()))
+    chk_msg_string  = ('; '.join("{!s}".format(v) for (k, v) in chk_msg.items()))
+
+    composed_output = ' '.join((chk_msg_prefix, chk_state_strings[chk_state], '-', chk_msg_string, '|', perf_data))
+
+    print(composed_output)
+    sys.exit(chk_state)
+
+
+def checkMetricsAgainstThresholds(m, m_name, c_state, c_msg,  m_warn=None, m_crit=None):
+    if m_crit and m[m_name] > m_crit:
+        c_state         = 2
+        c_msg[m_name]   = '{} is > {} ({})'.format(m_name, m_crit, m[m_name])
+
+    elif m_warn and m[m_name] > m_warn:
+        if c_state != 2:
+            c_state     = 1
+        
+        c_msg[m_name]   = '{} is > {} ({})'.format(m_name, m_warn, m[m_name])
+
+    else:
+        if c_state not in (1, 2):
+            c_state = 0
+        
+        c_msg[m_name]   = '{} is {}'.format(m_name, m[m_name])
+
+    pd_value    = m[m_name]
+
+    pd_warn         = m_warn if m_warn else ''
+    pd_crit         = m_crit if m_crit else ''
+    
+    m[m_name]       = '{};{};{}'.format(pd_value, pd_warn, pd_crit).strip(';')
+
+    return m, c_msg, c_state
+
+
+def parseArgs():
+    argParser = argparse.ArgumentParser(description='Providing TCP socket statistics from /proc/net/sockstat')
+    argParser.add_argument('--tcp-sockets-crit', dest='tcp_sockets_crit', type=int, default=False, \
+                            help='Critical threshold for used TCP sockets.')
+    argParser.add_argument('--tcp-sockets-warn', dest='tcp_sockets_warn', type=int, default=False, \
+                            help='Warning threshold for used TCP sockets.')
+    argParser.add_argument('--tcp-mem-crit', dest='tcp_mem_crit', type=int, default=False, \
+                            help='Critical threshold for used TCP sockets.')
+    argParser.add_argument('--tcp-mem-warn', dest='tcp_mem_warn', type=int, default=False, \
+                            help='Warning threshold for used TCP sockets.')
+
+    return argParser.parse_args()
+
+if __name__ == "__main__":
+    args = parseArgs()
+    main(args)
