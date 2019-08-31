@@ -21,19 +21,28 @@ def main(args):
                 if ln.startswith('TCP'):
                     m_cnt = 1
                     metrics_available       = len(ln.split())
-                   
+
                     while m_cnt < metrics_available:
                         metric              = ln.split()[0+m_cnt]
-                        metric_value        = ln.split()[1+m_cnt]
+                        metric_value        = int(ln.split()[1+m_cnt])
                         metrics[metric]     = metric_value
                         m_cnt               += 2
                         chk_msg[metric]     = '{} is {!s}'.format(metric, metric_value)
+
+    if args.tcp_alloc_warn or args.tcp_alloc_crit:
+        metrics, chk_msg, chk_state = checkMetricsAgainstThresholds(metrics, 'alloc', chk_state, chk_msg, args.tcp_alloc_warn, args.tcp_alloc_crit)
 
     if args.tcp_inuse_warn or args.tcp_inuse_crit:
         metrics, chk_msg, chk_state = checkMetricsAgainstThresholds(metrics, 'inuse', chk_state, chk_msg, args.tcp_inuse_warn, args.tcp_inuse_crit)
 
     if args.tcp_mem_warn or args.tcp_mem_crit:
         metrcis, chk_msg, chk_state = checkMetricsAgainstThresholds(metrics, 'mem', chk_state, chk_msg, args.tcp_mem_warn, args.tcp_mem_crit)
+
+    if args.tcp_orphan_warn or args.tcp_orphan_crit:
+        metrcis, chk_msg, chk_state = checkMetricsAgainstThresholds(metrics, 'orphan', chk_state, chk_msg, args.tcp_orphan_warn, args.tcp_orphan_crit)
+
+    if args.tcp_tw_warn or args.tcp_tw_crit:
+        metrcis, chk_msg, chk_state = checkMetricsAgainstThresholds(metrics, 'tw', chk_state, chk_msg, args.tcp_tw_warn, args.tcp_tw_crit)
 
     perf_data       = (' '.join("{!s}={!s}".format(k,v) for (k,v) in metrics.items()))
     chk_msg_string  = ('; '.join("{!s}".format(v) for (k, v) in chk_msg.items()))
@@ -52,27 +61,32 @@ def checkMetricsAgainstThresholds(m, m_name, c_state, c_msg,  m_warn=None, m_cri
     elif m_warn and m[m_name] > m_warn:
         if c_state != 2:
             c_state     = 1
-        
+
         c_msg[m_name]   = '{} is > {} ({})'.format(m_name, m_warn, m[m_name])
 
     else:
         if c_state not in (1, 2):
             c_state = 0
-        
+
         c_msg[m_name]   = '{} is {}'.format(m_name, m[m_name])
 
     pd_value    = m[m_name]
 
     pd_warn         = m_warn if m_warn else ''
     pd_crit         = m_crit if m_crit else ''
-    
+
     m[m_name]       = '{};{};{}'.format(pd_value, pd_warn, pd_crit).strip(';')
 
     return m, c_msg, c_state
 
 
 def parseArgs():
-    argParser = argparse.ArgumentParser(description='Providing TCP socket statistics from /proc/net/sockstat')
+    argParser = argparse.ArgumentParser(description='Providing TCP socket statistics from /proc/net/sockstat. \
+                                                      Note: All TCP states count as "alloc" while all TCP states except "TCP_CLOSE" count as inuse.')
+    argParser.add_argument('--tcp-alloc-crit', dest='tcp_alloc_crit', type=int, default=False, \
+                            help='Critical threshold for allocated TCP sockets.')
+    argParser.add_argument('--tcp-alloc-warn', dest='tcp_alloc_warn', type=int, default=False, \
+                            help='Warning threshold for allocated TCP sockets.')
     argParser.add_argument('--tcp-inuse-crit', '--tcp-sockets-crit', dest='tcp_inuse_crit', type=int, default=False, \
                             help='Critical threshold for used TCP sockets. \
                                   (Use tcp-inuse-crit! tcp-sockets-crit is deprecated and will be droppend in the future.')
@@ -83,6 +97,14 @@ def parseArgs():
                             help='Critical threshold for used TCP sockets.')
     argParser.add_argument('--tcp-mem-warn', dest='tcp_mem_warn', type=int, default=False, \
                             help='Warning threshold for used TCP sockets.')
+    argParser.add_argument('--tcp-orphan-crit', dest='tcp_orphan_crit', type=int, default=False, \
+                            help='Critical threshold for orphaned TCP sockets.')
+    argParser.add_argument('--tcp-orphan-warn', dest='tcp_orphan_warn', type=int, default=False, \
+                            help='Warning threshold for orphaned TCP sockets.')
+    argParser.add_argument('--tcp-tw-crit', dest='tcp_tw_crit', type=int, default=False, \
+                            help='Critical threshold for waiting (TIME-WAIT; see http://www.rfc-editor.org/rfc/rfc793.txt) TCP sockets.')
+    argParser.add_argument('--tcp-tw-warn', dest='tcp_tw_warn', type=int, default=False, \
+                            help='Warning threshold for waiting (TIME-WAIT; see http://www.rfc-editor.org/rfc/rfc793.txt) TCP sockets.')
 
     return argParser.parse_args()
 
