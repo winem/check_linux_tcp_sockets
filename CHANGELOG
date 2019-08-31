@@ -1,0 +1,3 @@
+Icinga2 check_linux_tcp_sockets last changes:
+2019-08-31
+  - v1.1.0: added examples and further details about the plugin to the README
